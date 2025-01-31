@@ -1,6 +1,11 @@
 import torch
-from models.diffusion import Model
-from models.ema import EMAHelper
+import sys
+sys.path.insert(0, '.')
+sys.path.insert(0,'..')
+
+#from rec_network.models.diffusion import Model
+#from rec_network.models.ema import EMAHelper
+
 from omegaconf import OmegaConf
 from data_loader import MVTecDRAEMTrainDataset
 from torch.utils.data import DataLoader
@@ -39,8 +44,11 @@ def train_on_device(obj_name, args):
 
     visualizer = TensorboardVisualizer(log_dir=os.path.join(args.log_path, run_name + "/"))
 
-    config = OmegaConf.load("../configs/mvtec.yaml")
-
+    config = OmegaConf.load("./configs/mvtec.yaml")
+ 
+    if 'first_stage_config' in config.model.params:
+        config.model.params.first_stage_config.params.ckpt_path = os.path.join('logs', f"{obj_name}_mvtec", 'checkpoints', 'last.ckpt')
+    
     model = instantiate_from_config(config.model)
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -59,7 +67,7 @@ def train_on_device(obj_name, args):
 
     loss_focal = FocalLoss()
 
-    dataset = MVTecDRAEMTrainDataset(args.data_path + obj_name + "/train/good/", args.anomaly_source_path,
+    dataset = MVTecDRAEMTrainDataset(os.path.join(args.data_path, obj_name, "train/good/"), args.anomaly_source_path,
                                      resize_shape=[256, 256])
 
     dataloader = DataLoader(dataset, batch_size=args.bs,
@@ -138,16 +146,15 @@ def train_on_device(obj_name, args):
         scheduler.step()
 
         torch.save(model_seg.state_dict(), os.path.join(args.checkpoint_path, run_name + "seg.pckl"))
-        # if epoch % 100 == 0 :
-        #     torch.save(model_seg.state_dict(),
-        #                os.path.join(args.checkpoint_path, run_name + str(epoch) + "_seg.pckl"))
+        if epoch % 100 == 0 :
+            torch.save(model_seg.state_dict(),
+                        os.path.join(args.checkpoint_path, run_name + str(epoch) + "_seg.pckl"))
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--obj_id', action='store', type=int, required=True)
     parser.add_argument('--bs', action='store', type=int, required=True)
     parser.add_argument('--lr', action='store', type=float, required=True)
     parser.add_argument('--epochs', action='store', type=int, required=True)
@@ -183,24 +190,11 @@ if __name__ == "__main__":
     parser.add_argument("--sample_type", type=str, default="generalized",
                         help="sampling approach (generalized or ddpm_noisy)")
     parser.add_argument("--skip_type", type=str, default="uniform", help="skip according to (uniform or quadratic)")
+    parser.add_argument("--obj_name", type=str, default="bottle", help="object name to experiments")
 
     args = parser.parse_args()
 
-    obj_name = 'bottle'
-    #         'capsule'
-    #         'carpet'
-    #         'leather'
-    #         'pill'
-    #         'transistor'
-    #         'tile'
-    #         'cable'
-    #         'zipper'
-    #         'toothbrush'
-    #         'metal_nut'
-    #         'hazelnut'
-    #         'screw'
-    #         'grid'
-    #         'wood'
+    obj_name = args.obj_name
 
     with torch.cuda.device(args.gpu_id):
         train_on_device(obj_name, args)

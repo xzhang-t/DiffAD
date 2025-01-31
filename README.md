@@ -26,37 +26,7 @@ Following DRAEM, we use the MVTec-AD and DTD dataset. You can run the download_d
 ./scripts/download_dataset.sh
 ```
 
-## Training
-### Reconstruction sub-network
-The reconstrucion sub-network is based on the latent diffusion model. 
-#### Training Auto-encoder
-```
-cd rec_network
-CUDA_VISIBLE_DEVICES=<GPU_ID> python main.py --base configs/kl.yaml -t --gpus 0,  
-```
-#### Training LDMs
-```
-CUDA_VISIBLE_DEVICES=<GPU_ID> python main.py --base configs/mvtec.yaml -t --gpus 0 -max_epochs 4000, 
-```
+## Train & Test
+Training and testing is automated for all MVTEC classes. 
 
-### Discriminative sub-network
-```
-cd seg_network
-CUDA_VISIBLE_DEVICES=<GPU_ID> python train.py --gpu_id 0 --lr 0.001 --bs 32 --epochs 700 --data_path ./datasets/mvtec/ --anomaly_source_path ./datasets/dtd/images/ --checkpoint_path ./checkpoints/obj_name --log_path ./logs/
-```
-
-## Evaluating
-### Reconstrucion performance
-After training the reconstruction sub-network, you can test the reconstruction performance with the anomalous inputs:
-```
-python scripts/mvtec.py
-```
-For some samples with severe deformations, such as missing transistors, you can add some noise to the anomalous conditions to adjust the sampling. 
-
-### Anomaly segmentation
-```
-cd seg_network
-python test.py --gpu_id 0 --base_model_name "seg_network" --data_path ./datasets/mvtec/ --checkpoint_path ./checkpoints/obj_name/
-```
-
-
+Use the run.sh script to train the model on all MVTEC classes and after training it runs the inference. You can arrange the parameters based on your needs.

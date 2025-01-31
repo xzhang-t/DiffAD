@@ -5,6 +5,10 @@ import torch
 import cv2
 import glob
 import imgaug.augmenters as iaa
+import sys
+sys.path.insert(0,'rec_network')
+sys.path.insert(0,'rec_network/data')
+
 from perlin import rand_perlin_2d_np
 
 obj_list = ['capsule',
