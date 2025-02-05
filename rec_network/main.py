@@ -121,6 +121,7 @@ def get_parser(**parser_kwargs):
         help="scale base-lr by ngpu * batch_size * n_accumulate",
     )
     parser.add_argument("--obj_name", type=str, default="bottle", help="object name to experiments")
+    parser.add_argument("--dataset", type=str, default="mvtec", help="dataset to experiment")
 
     return parser
 
@@ -488,6 +489,7 @@ if __name__ == "__main__":
 
     opt, unknown = parser.parse_known_args()
     obj_name = opt.obj_name
+    dataset_id = opt.dataset
 
     if opt.name and opt.resume:
         raise ValueError(
@@ -507,7 +509,7 @@ if __name__ == "__main__":
         else:
             assert os.path.isdir(opt.resume), opt.resume
             logdir = opt.resume.rstrip("/")
-            ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
+            ckpt = os.path.join(logdir, f"checkpoints_{dataset_id}", "last.ckpt")
 
         opt.resume_from_checkpoint = ckpt
         base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml")))
@@ -527,8 +529,8 @@ if __name__ == "__main__":
         nowname = obj_name + name + opt.postfix
         logdir = os.path.join(opt.logdir, nowname)
 
-    ckptdir = os.path.join(logdir, "checkpoints")
-    cfgdir = os.path.join(logdir, "configs")
+    ckptdir = os.path.join(logdir, f"checkpoints_{dataset_id}")
+    cfgdir = os.path.join(logdir, f"configs_{dataset_id}")
     seed_everything(opt.seed)
 
     try:
@@ -544,7 +546,7 @@ if __name__ == "__main__":
             config.data['params']['validation']['params']['root_dir'] = os.path.join(main_dir, obj_name, 'train/good')
 
         if 'first_stage_config' in config.model.params:
-            config.model.params.first_stage_config.params.ckpt_path = os.path.join(opt.logdir, f"{obj_name}_kl", 'checkpoints', 'last.ckpt')
+            config.model.params.first_stage_config.params.ckpt_path = os.path.join(opt.logdir, f"{obj_name}_kl", f'checkpoints_{dataset_id}', 'last.ckpt')
         
         lightning_config = config.pop("lightning", OmegaConf.create())
         # merge trainer cli with config

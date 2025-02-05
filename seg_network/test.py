@@ -49,15 +49,15 @@ def write_results_to_file(run_name, image_auc, pixel_auc, image_ap, pixel_ap):
         file.write(fin_str)
 
 
-def test(obj_name, mvtec_path, checkpoint_path, base_model_name, epoch=''):
+def test(obj_name, data_path, checkpoint_path, base_model_name, epoch='', dataset='mvtec'):
 
     img_dim = 256
     run_name = base_model_name + "_" + obj_name + '_'
 
-    config = OmegaConf.load("./configs/mvtec.yaml")
+    config = OmegaConf.load(f"./configs/{dataset}.yaml")
 
     if 'first_stage_config' in config.model.params:
-        config.model.params.first_stage_config.params.ckpt_path = os.path.join('logs', f"{obj_name}_mvtec", 'checkpoints', 'last.ckpt')
+        config.model.params.first_stage_config.params.ckpt_path = os.path.join(f'logs_{dataset}', f"{obj_name}_{dataset}", f'checkpoints_{dataset}', 'last.ckpt')
 
     model = instantiate_from_config(config.model)
 
@@ -72,7 +72,7 @@ def test(obj_name, mvtec_path, checkpoint_path, base_model_name, epoch=''):
     model_seg.cuda()
     model_seg.eval()
 
-    dataset = MVTecDRAEMTestDataset(os.path.join(mvtec_path, obj_name, "test"), resize_shape=[img_dim, img_dim])
+    dataset = MVTecDRAEMTestDataset(os.path.join(data_path, obj_name, "test"), resize_shape=[img_dim, img_dim], dataset=dataset)
     dataloader = DataLoader(dataset, batch_size=1,
                             shuffle=False, num_workers=0)
 
@@ -213,31 +213,47 @@ if __name__ == "__main__":
                         help="sampling approach (generalized or ddpm_noisy)")
     parser.add_argument("--skip_type", type=str, default="uniform", help="skip according to (uniform or quadratic)")
     parser.add_argument("--epoch", type=str, default="", help="eval epoch, 100 or empty for last")
+    parser.add_argument("--dataset", type=str, default="mvtec", help="dataset to test")
 
     args = parser.parse_args()
 
-    obj_list = ['bottle',
-                 'capsule',
-                 'carpet',
-                 'leather',
-                 'pill',
-                 'transistor',
-                 'tile',
-                 'cable',
-                 'zipper',
-                 'toothbrush',
-                 'metal_nut',
-                 'hazelnut',
-                 'screw',
-                 'grid',
-                 'wood'
-                 ]
+    if args.dataset == 'mvtec':
+        obj_list = ['bottle',
+                    'capsule',
+                    'carpet',
+                    'leather',
+                    'pill',
+                    'transistor',
+                    'tile',
+                    'cable',
+                    'zipper',
+                    'toothbrush',
+                    'metal_nut',
+                    'hazelnut',
+                    'screw',
+                    'grid',
+                    'wood'
+                    ]
+    if args.dataset == 'visa':
+        obj_list = ['candle',
+                    'capsules',
+                    'cashew',
+                    'chewinggum',
+                    'fryum',
+                    'macaroni1',
+                    'macaroni2',
+                    'pcb1',
+                    'pcb2',
+                    'pcb3',
+                    'pcb4',
+                    'pipe_fryum'
+                    ]
 
     ret_metrics = {}
     for obj_name in obj_list:
         with torch.cuda.device(args.gpu_id):
             # test(obj_name, args.data_path, args.checkpoint_path, args.base_model_name)
-            ret_metric = test(obj_name, args.data_path, args.checkpoint_path, args.base_model_name, args.epoch)
+            ret_metric = test(obj_name, args.data_path, args.checkpoint_path, args.base_model_name, args.epoch, args.dataset)
             ret_metrics.update(ret_metric)
     
     config = {'auc': [ {'name': 'max'}, {'name': 'pixel'}, {'name': 'pro'}, {'name': 'appx'}, {'name': 'apsp'}, {'name': 'f1px'}, {'name': 'f1sp'}]}

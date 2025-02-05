@@ -11,27 +11,34 @@ sys.path.insert(0,'rec_network/data')
 
 from perlin import rand_perlin_2d_np
 
-obj_list = ['capsule',
-                     'bottle',
-                     'carpet',
-                     'leather',
-                     'pill',
-                     'transistor',
-                     'tile',
-                     'cable',
-                     'zipper',
-                     'toothbrush',
-                     'metal_nut',
-                     'hazelnut',
-                     'screw',
-                     'grid',
-                     'wood']
+# obj_list = ['capsule',
+#                      'bottle',
+#                      'carpet',
+#                      'leather',
+#                      'pill',
+#                      'transistor',
+#                      'tile',
+#                      'cable',
+#                      'zipper',
+#                      'toothbrush',
+#                      'metal_nut',
+#                      'hazelnut',
+#                      'screw',
+#                      'grid',
+#                      'wood']
 
 class MVTecDRAEMTestDataset(Dataset):
 
-    def __init__(self, root_dir, resize_shape=None):
+    def __init__(self, root_dir, resize_shape=None, dataset='mvtec'):
         self.root_dir = root_dir
-        self.images = sorted(glob.glob(root_dir+"/*/*.png"))
+        self.dataset = dataset
+
+        if self.dataset == 'mvtec':
+            self.images = sorted(glob.glob(root_dir+"/*/*.png"))
+        elif self.dataset == 'visa':
+            self.images = sorted(glob.glob(root_dir+"/*/*.JPG"))
+        else:
+            raise Exception("dataset not implemented!")
 
         # self.images = []
         # for obj in obj_list:
@@ -75,7 +82,10 @@ class MVTecDRAEMTestDataset(Dataset):
         else:
             mask_path = os.path.join(dir_path, '../../ground_truth/')
             mask_path = os.path.join(mask_path, base_dir)
-            mask_file_name = file_name.split(".")[0]+"_mask.png"
+            if self.dataset == 'mvtec':
+                mask_file_name = file_name.split(".")[0]+"_mask.png"
+            elif self.dataset == 'visa':
+                mask_file_name = file_name.split(".")[0]+".png"            
             mask_path = os.path.join(mask_path, mask_file_name)
             image, mask = self.transform_image(img_path, mask_path)
             has_anomaly = np.array([1], dtype=np.float32)
@@ -88,7 +98,7 @@ class MVTecDRAEMTestDataset(Dataset):
 
 class MVTecDRAEMTrainDataset(Dataset):
 
-    def __init__(self, root_dir, anomaly_source_path, resize_shape=None):
+    def __init__(self, root_dir, anomaly_source_path, resize_shape=None, dataset='mvtec'):
         """
         Args:
             root_dir (string): Directory with all the images.
@@ -98,6 +108,14 @@ class MVTecDRAEMTrainDataset(Dataset):
 
         self.root_dir = root_dir
         self.resize_shape=resize_shape
+        self.dataset = dataset
+
+        if self.dataset == 'mvtec':
+            self.image_paths = sorted(glob.glob(root_dir + "/*.png"))
+        elif self.dataset == 'visa':
+            self.image_paths = sorted(glob.glob(root_dir + "/*.JPG"))
+        else:
+            raise Exception("dataset not implemented!")
 
         # /data / zhangxinyi / dataset / mvtec / toothbrush / train / good
         # self.image_paths = []
@@ -105,8 +123,6 @@ class MVTecDRAEMTrainDataset(Dataset):
         # obj = 'cable'
         # self.image_paths += sorted(glob.glob(root_dir + obj + "/train/good/*.png"))
         # print(len(self.image_paths))
-
-        self.image_paths = sorted(glob.glob(root_dir + "/*.png"))
 
         self.anomaly_source_paths = sorted(glob.glob(anomaly_source_path+"/*/*.jpg"))
 
