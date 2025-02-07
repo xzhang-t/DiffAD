@@ -1,7 +1,9 @@
+import sys
+sys.path.insert(0, '..')
+sys.path.insert(0, '.')
+
 import torch
 import torch.nn.functional as F
-from models.diffusion import Model
-from models.ema import EMAHelper
 from omegaconf import OmegaConf
 from PIL import Image
 from data_loader import MVTecDRAEMTestDataset, MVTecDRAEMTrainDataset
@@ -13,6 +15,8 @@ import os
 import cv2
 from rec_network.util import instantiate_from_config
 from rec_network.models.diffusion.ddim import DDIMSampler
+
+from eval_helper import performances, log_metrics
 
 
 def write_results_to_file(run_name, image_auc, pixel_auc, image_ap, pixel_ap):
@@ -45,25 +49,30 @@ def write_results_to_file(run_name, image_auc, pixel_auc, image_ap, pixel_ap):
         file.write(fin_str)
 
 
-def test(obj_name, mvtec_path, checkpoint_path, base_model_name):
+def test(obj_name, data_path, checkpoint_path, base_model_name, epoch='', dataset='mvtec'):
 
     img_dim = 256
     run_name = base_model_name + "_" + obj_name + '_'
 
-    config = OmegaConf.load("../configs/mvtec.yaml")
+    config = OmegaConf.load(f"./configs/{dataset}.yaml")
+
+    if 'first_stage_config' in config.model.params:
+        config.model.params.first_stage_config.params.ckpt_path = os.path.join(f'logs_{dataset}', f"{obj_name}_{dataset}", f'checkpoints_{dataset}', 'last.ckpt')
 
     model = instantiate_from_config(config.model)
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     model = model.to(device)
     sampler = DDIMSampler(model)
+    if epoch:
+        epoch = f'{epoch}_'
 
     model_seg = DiscriminativeSubNetwork(in_channels=9, out_channels=2)
-    model_seg.load_state_dict(torch.load(os.path.join(checkpoint_path, run_name+"_seg.pckl"), map_location='cuda:0'))
+    model_seg.load_state_dict(torch.load(os.path.join(checkpoint_path, obj_name, run_name+f"{epoch}seg.pckl"), map_location='cuda:0'))
     model_seg.cuda()
     model_seg.eval()
 
-    dataset = MVTecDRAEMTestDataset(mvtec_path + obj_name + "/test", resize_shape=[img_dim, img_dim])
+    dataset = MVTecDRAEMTestDataset(os.path.join(data_path, obj_name, "test"), resize_shape=[img_dim, img_dim], dataset=dataset)
     dataloader = DataLoader(dataset, batch_size=1,
                             shuffle=False, num_workers=0)
 
@@ -75,6 +84,9 @@ def test(obj_name, mvtec_path, checkpoint_path, base_model_name):
     anomaly_score_prediction = []
 
     cnt_display = 0
+
+    gt_matrix_pixel=[]
+    pred_matrix_pixel=[]
 
     for i_batch, sample_batched in enumerate(dataloader):
         gray_batch = sample_batched["image"].cuda()
@@ -144,8 +156,15 @@ def test(obj_name, mvtec_path, checkpoint_path, base_model_name):
         flat_out_mask = out_mask_cv.flatten()
         total_pixel_scores[mask_cnt * img_dim * img_dim:(mask_cnt + 1) * img_dim * img_dim] = flat_out_mask
         total_gt_pixel_scores[mask_cnt * img_dim * img_dim:(mask_cnt + 1) * img_dim * img_dim] = flat_true_mask
-        mask_cnt += 1
 
+        gt_matrix_pixel.extend(true_mask_cv[None, :,:,0].astype(int))
+        pred_matrix_pixel.extend(out_mask_cv[None, :])
+
+        mask_cnt += 1
+        if mask_cnt > 5:
+            break
+    
+    """
     anomaly_score_prediction = np.array(anomaly_score_prediction)
     anomaly_score_gt = np.array(anomaly_score_gt)
     auroc = roc_auc_score(anomaly_score_gt, anomaly_score_prediction)
@@ -164,6 +183,15 @@ def test(obj_name, mvtec_path, checkpoint_path, base_model_name):
     print("AP Pixel:  " + str(ap_pixel))
 
     write_results_to_file(run_name, auroc, auroc_pixel, ap, ap_pixel)
+    """
+    total_gt_pixel_scores = total_gt_pixel_scores.astype(np.uint8)
+    total_gt_pixel_scores = total_gt_pixel_scores[:img_dim * img_dim * mask_cnt]
+    total_pixel_scores = total_pixel_scores[:img_dim * img_dim * mask_cnt]
+    
+    evl_metrics = {'auc': [ {'name': 'max'}, {'name': 'pixel'}, {'name': 'pro'}, {'name': 'appx'}, {'name': 'apsp'}, {'name': 'f1px'}, {'name': 'f1sp'}]}
+    print("Gathering final results ...")
+    ret_metrics = performances(pred_matrix_pixel, gt_matrix_pixel, evl_metrics, obj_name)
+    return ret_metrics
 
 
 if __name__ == "__main__":
@@ -184,26 +212,58 @@ if __name__ == "__main__":
     parser.add_argument("--sample_type", type=str, default="generalized",
                         help="sampling approach (generalized or ddpm_noisy)")
     parser.add_argument("--skip_type", type=str, default="uniform", help="skip according to (uniform or quadratic)")
+    parser.add_argument("--epoch", type=str, default="", help="eval epoch, 100 or empty for last")
+    parser.add_argument("--dataset", type=str, default="mvtec", help="dataset to test")
 
     args = parser.parse_args()
 
-    obj_list = ['capsule',
-                 'bottle',
-                 'carpet',
-                 'leather',
-                 'pill',
-                 'transistor',
-                 'tile',
-                 'cable',
-                 'zipper',
-                 'toothbrush',
-                 'metal_nut',
-                 'hazelnut',
-                 'screw',
-                 'grid',
-                 'wood'
-                 ]
-    obj_name = 'bottle'
+    if args.dataset == 'mvtec':
+        obj_list = ['bottle',
+                    'capsule',
+                    'carpet',
+                    'leather',
+                    'pill',
+                    'transistor',
+                    'tile',
+                    'cable',
+                    'zipper',
+                    'toothbrush',
+                    'metal_nut',
+                    'hazelnut',
+                    'screw',
+                    'grid',
+                    'wood'
+                    ]
+    if args.dataset == 'visa':
+        obj_list = ['candle',
+                    'capsules',
+                    'cashew',
+                    'chewinggum',
+                    'fryum',
+                    'macaroni1',
+                    'macaroni2',
+                    'pcb1',
+                    'pcb2',
+                    'pcb3',
+                    'pcb4',
+                    'pipe_fryum'
+                    ]
 
-    with torch.cuda.device(args.gpu_id):
-        test(obj_name, args.data_path, args.checkpoint_path, args.base_model_name)
+    ret_metrics = {}
+    for obj_name in obj_list:
+        with torch.cuda.device(args.gpu_id):
+            # test(obj_name, args.data_path, args.checkpoint_path, args.base_model_name)
+            ret_metric = test(obj_name, args.data_path, args.checkpoint_path, args.base_model_name, args.epoch, args.dataset)
+            ret_metrics.update(ret_metric)
+    
+    config = {'auc': [ {'name': 'max'}, {'name': 'pixel'}, {'name': 'pro'}, {'name': 'appx'}, {'name': 'apsp'}, {'name': 'f1px'}, {'name': 'f1sp'}]}
+    if config.get("auc", None):
+        for metric in config["auc"]:
+            evalname = metric["name"]
+            evalvalues = [
+                ret_metrics["{}_{}_auc".format(clsname, evalname)]
+                for clsname in obj_list
+            ]
+            mean_auc = np.mean(np.array(evalvalues))
+            ret_metrics["{}_{}_auc".format("mean", evalname)] = mean_auc
+    log_metrics(ret_metrics, config)

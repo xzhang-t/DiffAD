@@ -32,15 +32,19 @@ data:
     train:
       target: rec_network.data.mvtec.MVTecDRAEMTrainDataset
       params:
-        root_dir: './datasets/mvtec/grid/train/good'
-        anomaly_source_path: './datasets/dtd/images'
+        root_dir: '/path/to/visa/dataset'
+        anomaly_source_path: 'path/to/dtd/images'
         resize_shape: [256, 256]
+        dataset: 'visa'
+
     validation:
       target: rec_network.data.mvtec.MVTecDRAEMTrainDataset
       params:
-        root_dir: './datasets/mvtec/grid/train/good'
-        anomaly_source_path: './datasets/dtd/images'
+        root_dir: '/path/to/visa/dataset'
+        anomaly_source_path: 'path/to/dtd/images'
         resize_shape: [ 256, 256 ]
+        dataset: 'visa'
+
 lightning:
   callbacks:
     image_logger:

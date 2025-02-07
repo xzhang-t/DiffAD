@@ -64,13 +64,12 @@ data:
     train:
       target: rec_network.data.mvtec.MVTecDRAEMTrainDataset
       params:
-        root_dir: '/path/to/mvtec/dataset'
+        root_dir: '/path/to/visa/dataset'
         anomaly_source_path: 'path/to/dtd/images'
         resize_shape:
         - 256
         - 256
-        dataset: 'mvtec'
-
+        dataset: 'visa'
 
 lightning:
   callbacks:

@@ -120,6 +120,9 @@ def get_parser(**parser_kwargs):
         default=True,
         help="scale base-lr by ngpu * batch_size * n_accumulate",
     )
+    parser.add_argument("--obj_name", type=str, default="bottle", help="object name to experiments")
+    parser.add_argument("--dataset", type=str, default="mvtec", help="dataset to experiment")
+
     return parser
 
 
@@ -417,7 +420,7 @@ class CUDACallback(Callback):
         torch.cuda.synchronize(trainer.root_gpu)
         self.start_time = time.time()
 
-    def on_train_epoch_end(self, trainer, pl_module, outputs):
+    def on_train_epoch_end(self, trainer, pl_module):
         torch.cuda.synchronize(trainer.root_gpu)
         max_memory = torch.cuda.max_memory_allocated(trainer.root_gpu) / 2 ** 20
         epoch_time = time.time() - self.start_time
@@ -485,6 +488,9 @@ if __name__ == "__main__":
     parser = Trainer.add_argparse_args(parser)
 
     opt, unknown = parser.parse_known_args()
+    obj_name = opt.obj_name
+    dataset_id = opt.dataset
+
     if opt.name and opt.resume:
         raise ValueError(
             "-n/--name and -r/--resume cannot be specified both."
@@ -503,7 +509,7 @@ if __name__ == "__main__":
         else:
             assert os.path.isdir(opt.resume), opt.resume
             logdir = opt.resume.rstrip("/")
-            ckpt = os.path.join(logdir, "checkpoints", "last.ckpt")
+            ckpt = os.path.join(logdir, f"checkpoints_{dataset_id}", "last.ckpt")
 
         opt.resume_from_checkpoint = ckpt
         base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml")))
@@ -519,11 +525,12 @@ if __name__ == "__main__":
             name = "_" + cfg_name
         else:
             name = ""
-        nowname = now + name + opt.postfix
+        #nowname = now + name + opt.postfix
+        nowname = obj_name + name + opt.postfix
         logdir = os.path.join(opt.logdir, nowname)
 
-    ckptdir = os.path.join(logdir, "checkpoints")
-    cfgdir = os.path.join(logdir, "configs")
+    ckptdir = os.path.join(logdir, f"checkpoints_{dataset_id}")
+    cfgdir = os.path.join(logdir, f"configs_{dataset_id}")
     seed_everything(opt.seed)
 
     try:
@@ -531,6 +538,16 @@ if __name__ == "__main__":
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
         cli = OmegaConf.from_dotlist(unknown)
         config = OmegaConf.merge(*configs, cli)
+        
+        # update the paths here based on our object_name
+        main_dir = config.data['params']['train']['params']['root_dir']
+        config.data['params']['train']['params']['root_dir'] = os.path.join(main_dir, obj_name, 'train/good')
+        if 'validation' in config.data['params']:
+            config.data['params']['validation']['params']['root_dir'] = os.path.join(main_dir, obj_name, 'train/good')
+
+        if 'first_stage_config' in config.model.params:
+            config.model.params.first_stage_config.params.ckpt_path = os.path.join(opt.logdir, f"{obj_name}_kl", f'checkpoints_{dataset_id}', 'last.ckpt')
+        
         lightning_config = config.pop("lightning", OmegaConf.create())
         # merge trainer cli with config
         trainer_config = lightning_config.get("trainer", OmegaConf.create())
@@ -595,7 +612,8 @@ if __name__ == "__main__":
         if hasattr(model, "monitor"):
             print(f"Monitoring {model.monitor} as checkpoint metric.")
             default_modelckpt_cfg["params"]["monitor"] = model.monitor
-            default_modelckpt_cfg["params"]["save_top_k"] = 3
+            default_modelckpt_cfg["params"]["save_top_k"] = -1
+            default_modelckpt_cfg["params"]["every_n_epochs"] = 100
 
         if "modelcheckpoint" in lightning_config:
             modelckpt_cfg = lightning_config.modelcheckpoint
@@ -673,7 +691,7 @@ if __name__ == "__main__":
 
         trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
-        trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
+        trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs, max_epochs=300)
         trainer.logdir = logdir  ###
 
         # data
